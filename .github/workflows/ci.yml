@@ -15,6 +15,27 @@ permissions:
   security-events: write
 
 jobs:
+  link-check:
+    uses: Project-Arrakis/.github/.github/workflows/reusable-link-check.yml@main
+    with:
+      paths: "docs/**/*.md README.md CHANGELOG.md"
+      # mentat, mentat-link, and meta are private repos -- GitHub 404s a
+      # correct cross-repo link into any of them for an anonymous request,
+      # so exclude the pattern rather than eat permanent false positives.
+      exclude: 'github\.com/Project-Arrakis/(mentat|mentat-link|meta)(/|$)'
+
+  docs-review:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: Project-Arrakis/.github/.github/workflows/reusable-docs-review.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    with:
+      paths: "docs/**/*.md README.md CHANGELOG.md"
+
   shellcheck:
     name: Shell Lint
     runs-on: ubuntu-latest
