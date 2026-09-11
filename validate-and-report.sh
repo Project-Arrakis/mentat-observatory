@@ -471,9 +471,34 @@ fi
 
 # ─── 3. PR mergeability check ───
 echo "--- 3. PR mergeability ---"
+
+# BUG FIX (issue #38): GitHub computes a PR's `mergeable` field
+# asynchronously -- a query can legitimately return "UNKNOWN" for a few
+# seconds after a push/query while the backend is still computing merge
+# conflicts, before settling to MERGEABLE or CONFLICTING. The
+# `gh pr list` call below is a single point-in-time snapshot with no way
+# to tell "still computing" apart from a real finding, so an hourly run
+# that happens to land during that window previously reported a
+# perfectly healthy, mergeable PR as a hard failure (confirmed live:
+# PRs #189/#201/#202 alerted as UNKNOWN, then read back as stably
+# MERGEABLE seconds later). Re-poll that one PR directly a few times
+# before trusting UNKNOWN as a real result.
+resolve_mergeable() {
+  local repo="$1" pr="$2" val="$3" _attempt
+  for _attempt in 1 2 3; do
+    [ "$val" != "UNKNOWN" ] && break
+    sleep 2
+    val="$(timeout 30 gh pr view "$pr" --repo "$repo" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")"
+  done
+  echo "$val"
+}
+
 check_prs() {
   local repo="$1" label="$2"
   while IFS=$'\t' read -r pr title mergeable; do
+    if [ "$mergeable" = "UNKNOWN" ]; then
+      mergeable="$(resolve_mergeable "$repo" "$pr" "$mergeable")"
+    fi
     if [ "$mergeable" = "MERGEABLE" ]; then
       echo -e "  ${GREEN}OK:${NC} PR #$pr ($label) — MERGEABLE"
     else

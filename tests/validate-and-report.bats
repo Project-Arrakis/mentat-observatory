@@ -472,3 +472,109 @@ setup_divergence_state() {
   CONTENT="$(cat "$DIVERGENCE_STATE_FILE")"
   [ "$CONTENT" = "224 314" ]
 }
+
+# ── PR mergeability: UNKNOWN retry (added, issue #38) ──
+#
+# Regression coverage for a real false-positive: check_prs() treated a
+# single point-in-time mergeable="UNKNOWN" reading exactly like a real
+# CONFLICTING finding. GitHub computes `mergeable` asynchronously, so a
+# perfectly healthy, mergeable PR can transiently read back UNKNOWN for a
+# few seconds -- confirmed live against PRs #189/#201/#202, which alerted
+# as UNKNOWN and then read back as stably MERGEABLE seconds later. These
+# tests use a real mocked `gh` binary (unlike most tests in this file,
+# which mirror decision logic inline) because the fix's behavior IS the
+# sequence of `gh pr view` calls across retries.
+
+# A copy of the real resolve_mergeable() from validate-and-report.sh --
+# sourcing the real script isn't practical here (it performs live git/gh
+# operations and exits immediately if `gh auth status` fails, per this
+# file's own header note that network/git sections are validated through
+# CI and manual review, not unit tests). This mirrors the script's exact
+# retry structure with `sleep` removed; any change to the real function's
+# decision logic should be mirrored here too.
+resolve_mergeable() {
+  local repo="$1" pr="$2" val="$3" _attempt
+  for _attempt in 1 2 3; do
+    [ "$val" != "UNKNOWN" ] && break
+    val="$(timeout 30 gh pr view "$pr" --repo "$repo" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")"
+  done
+  echo "$val"
+}
+
+@test "resolve_mergeable: UNKNOWN that resolves to MERGEABLE on retry is not a failure" {
+  RESOLVE_BIN_DIR="$(mktemp -d)"
+  cat > "${RESOLVE_BIN_DIR}/gh" <<'MOCKEOF'
+#!/usr/bin/env bash
+echo "MERGEABLE"
+MOCKEOF
+  chmod +x "${RESOLVE_BIN_DIR}/gh"
+  PATH="${RESOLVE_BIN_DIR}:${PATH}" run resolve_mergeable "owner/repo" 202 "UNKNOWN"
+  [ "$status" -eq 0 ]
+  [ "$output" = "MERGEABLE" ]
+  rm -rf "${RESOLVE_BIN_DIR}"
+}
+
+@test "resolve_mergeable: value that is not UNKNOWN is returned immediately, no gh call" {
+  RESOLVE_BIN_DIR="$(mktemp -d)"
+  RESOLVE_CALL_LOG="$(mktemp)"
+  cat > "${RESOLVE_BIN_DIR}/gh" <<MOCKEOF
+#!/usr/bin/env bash
+echo "CALLED" >> "${RESOLVE_CALL_LOG}"
+echo "MERGEABLE"
+MOCKEOF
+  chmod +x "${RESOLVE_BIN_DIR}/gh"
+  PATH="${RESOLVE_BIN_DIR}:${PATH}" run resolve_mergeable "owner/repo" 202 "CONFLICTING"
+  [ "$status" -eq 0 ]
+  [ "$output" = "CONFLICTING" ]
+  [ ! -s "$RESOLVE_CALL_LOG" ]
+  rm -rf "${RESOLVE_BIN_DIR}" "$RESOLVE_CALL_LOG"
+}
+
+@test "resolve_mergeable: still UNKNOWN after all retries is returned as UNKNOWN, not silently dropped" {
+  RESOLVE_BIN_DIR="$(mktemp -d)"
+  cat > "${RESOLVE_BIN_DIR}/gh" <<'MOCKEOF'
+#!/usr/bin/env bash
+echo "UNKNOWN"
+MOCKEOF
+  chmod +x "${RESOLVE_BIN_DIR}/gh"
+  PATH="${RESOLVE_BIN_DIR}:${PATH}" run resolve_mergeable "owner/repo" 202 "UNKNOWN"
+  [ "$status" -eq 0 ]
+  [ "$output" = "UNKNOWN" ]
+  rm -rf "${RESOLVE_BIN_DIR}"
+}
+
+@test "resolve_mergeable: a real merge conflict (CONFLICTING) surviving a retry is still reported" {
+  RESOLVE_BIN_DIR="$(mktemp -d)"
+  cat > "${RESOLVE_BIN_DIR}/gh" <<'MOCKEOF'
+#!/usr/bin/env bash
+echo "CONFLICTING"
+MOCKEOF
+  chmod +x "${RESOLVE_BIN_DIR}/gh"
+  PATH="${RESOLVE_BIN_DIR}:${PATH}" run resolve_mergeable "owner/repo" 202 "UNKNOWN"
+  [ "$status" -eq 0 ]
+  [ "$output" = "CONFLICTING" ]
+  rm -rf "${RESOLVE_BIN_DIR}"
+}
+
+@test "resolve_mergeable: UNKNOWN that flips to MERGEABLE only on the 3rd attempt is caught" {
+  RESOLVE_BIN_DIR="$(mktemp -d)"
+  COUNTER_FILE="$(mktemp)"
+  echo 0 > "$COUNTER_FILE"
+  cat > "${RESOLVE_BIN_DIR}/gh" <<MOCKEOF
+#!/usr/bin/env bash
+n=\$(cat "${COUNTER_FILE}")
+n=\$((n + 1))
+echo "\$n" > "${COUNTER_FILE}"
+if [ "\$n" -lt 3 ]; then
+  echo "UNKNOWN"
+else
+  echo "MERGEABLE"
+fi
+MOCKEOF
+  chmod +x "${RESOLVE_BIN_DIR}/gh"
+  PATH="${RESOLVE_BIN_DIR}:${PATH}" run resolve_mergeable "owner/repo" 202 "UNKNOWN"
+  [ "$status" -eq 0 ]
+  [ "$output" = "MERGEABLE" ]
+  [ "$(cat "$COUNTER_FILE")" -eq 3 ]
+  rm -rf "${RESOLVE_BIN_DIR}" "$COUNTER_FILE"
+}
