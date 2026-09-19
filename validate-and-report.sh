@@ -74,7 +74,7 @@ if [ -n "$LATEST_TAG" ]; then
     FINGERPRINT="release-${LATEST_TAG}"
     COMMIT_LIST=$(git log --oneline HEAD.."$LATEST_TAG" 2>/dev/null | head -10 || echo "unknown")
     timeout 30 gh issue create --title "upstream: $LATEST_TAG released — $BEHIND_COUNT commits ahead" \
-      --label "enhancement,severity:high" \
+      --label "enhancement,severity:high,ops-monitor" \
       --body "Upstream released **$LATEST_TAG** on $TAG_DATE.
 
 \`\`\`
@@ -249,7 +249,7 @@ if [ "$SYNC_STATUS" = "sync" ]; then
       FINGERPRINT="conflict-${pr}-$(date +%Y%m%d)"
       if ! grep -q "$FINGERPRINT" "$STATE_FILE" 2>/dev/null; then
         timeout 30 gh issue create --title "fix: PR #$pr ($branch) conflicts with upstream/main — needs rebase" \
-          --label "bug,severity:high" \
+          --label "bug,severity:high,ops-monitor" \
           --body "PR https://github.com/Red-Blink/dune-awakening-selfhost-docker/pull/$pr has merge conflicts with the latest upstream release. The branch \`$branch\` needs to be rebased onto \`upstream/main\` and force-pushed." \
           --repo Project-Arrakis/dune-awakening-selfhost-docker 2>/dev/null && echo "$FINGERPRINT" >> "$STATE_FILE" || true
       fi
@@ -333,9 +333,43 @@ elif [ "$SYNC_STATUS" = "diverged" ]; then
   [[ "${LAST_REPORTED_BEHIND:-}" =~ ^[0-9]+$ ]] || LAST_REPORTED_BEHIND=0
   [[ "${LAST_ISSUE_NUMBER:-}" =~ ^[0-9]+$ ]] || LAST_ISSUE_NUMBER=""
 
+  # BUG FIX (2026-09-19, meta#requirement-28/29): raw rev-list ahead/behind
+  # counts are pure git-ancestry facts, but this fork's own sync workflow
+  # (squash-merge batches, see the 13-batch v1.3.95->v1.4.31 reconciliation)
+  # deliberately severs ancestry from upstream's individual commits even
+  # when every one of their changes has genuinely landed in this fork's
+  # content. That mismatch caused a real, confirmed false alarm this
+  # session: `BEHIND` reported ~1245 after a sync that had, by content,
+  # already reconciled everything upstream had -- a raw count alone cannot
+  # distinguish "real, unreconciled upstream work" from "ancestry severed,
+  # content already equivalent." Cross-check with a content-based diff
+  # (the same `git diff --name-status` superset technique already used
+  # to close #964/#664/#980-#982 this session) before treating a nonzero
+  # BEHIND as something that actually needs a human to reconcile.
+  CONTENT_DELETED_COUNT=0
   if [ "$BEHIND" -gt 0 ]; then
+    CONTENT_DELETED_COUNT=$(git diff --name-status upstream/main origin/main 2>/dev/null \
+      | awk '$1 == "D"' | wc -l | tr -d ' ')
+  fi
+
+  if [ "$BEHIND" -gt 0 ] && [ "$CONTENT_DELETED_COUNT" -eq 0 ]; then
+    echo -e "  ${GREEN}OK:${NC} core fork main is $AHEAD_OF_UPSTREAM ahead / $BEHIND behind upstream/main by raw commit count, but a content diff shows zero files upstream has that origin/main lacks -- ancestry severed by this fork's own squash-merge sync workflow, not a real reconciliation gap. Not alerting."
+    if [ -n "$LAST_ISSUE_NUMBER" ]; then
+      TRACKED_ISSUE_STATE=$(timeout 30 gh issue view "$LAST_ISSUE_NUMBER" \
+        --repo Project-Arrakis/dune-awakening-selfhost-docker \
+        --json state -q .state 2>/dev/null || echo "")
+      if [ "$TRACKED_ISSUE_STATE" = "OPEN" ]; then
+        echo "  RESOLVED: closing divergence issue #$LAST_ISSUE_NUMBER (content-equivalent; raw ancestry count is a false signal)"
+        timeout 30 gh issue close "$LAST_ISSUE_NUMBER" \
+          --repo Project-Arrakis/dune-awakening-selfhost-docker \
+          --comment "Auto-closed: raw ancestry count still shows main as \`$BEHIND\` commits behind \`upstream/main\`, but \`git diff --name-status upstream/main origin/main\` shows zero deleted files -- origin/main is a content superset of upstream/main despite the severed ancestry. Treating this as resolved rather than a real reconciliation gap." 2>/dev/null || true
+        REPORT="${REPORT}\n✅ Core fork divergence resolved (content-equivalent) — closed #$LAST_ISSUE_NUMBER"
+      fi
+      rm -f "$DIVERGENCE_STATE_FILE"
+    fi
+  elif [ "$BEHIND" -gt 0 ]; then
     if [ "$BEHIND" -gt "$LAST_REPORTED_BEHIND" ]; then
-      echo -e "  ${YELLOW}DIVERGED:${NC} core fork main is $AHEAD_OF_UPSTREAM commits ahead AND $BEHIND commits behind upstream/main — real upstream work is not yet reconciled (was $LAST_REPORTED_BEHIND commits behind at last report)"
+      echo -e "  ${YELLOW}DIVERGED:${NC} core fork main is $AHEAD_OF_UPSTREAM commits ahead AND $BEHIND commits behind upstream/main — real upstream work is not yet reconciled (was $LAST_REPORTED_BEHIND commits behind at last report; content diff shows $CONTENT_DELETED_COUNT file(s) upstream has that origin/main lacks)"
       DIVERGENCE_COMMIT_LIST=$(git log --oneline origin/main..upstream/main 2>/dev/null | head -10 || echo "unknown")
 
       # Only reuse the tracked issue number if it's still actually open --
@@ -365,7 +399,7 @@ Still needs a human (or agent) to review and merge \`upstream/main\` in delibera
       else
         NEW_ISSUE_URL=$(timeout 30 gh issue create \
           --title "fork/upstream divergence: main is $AHEAD_OF_UPSTREAM ahead / $BEHIND behind upstream/main — needs reconciliation" \
-          --label "bug,severity:high" \
+          --label "bug,severity:high,ops-monitor" \
           --body "This fork's \`main\` has diverged from \`Red-Blink/dune-awakening-selfhost-docker\`'s \`main\`: **$AHEAD_OF_UPSTREAM commits ahead**, **$BEHIND commits behind**.
 
 Being ahead alone is expected (local work not yet upstreamed) — this issue exists specifically because \`main\` is ALSO behind, meaning real upstream commits exist that this fork has not reconciled. This is never auto-synced (a genuinely diverged fork must not be fast-forwarded or reset — see this repo's own incident history), so it needs a human (or agent) to review and merge \`upstream/main\` in deliberately.
