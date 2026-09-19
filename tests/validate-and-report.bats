@@ -340,6 +340,62 @@ setup_divergence_state() {
   [ "$BEHIND" -gt "$LAST_REPORTED_BEHIND" ]
 }
 
+# ── Content-based false-positive suppression (added 2026-09-19) ──
+#
+# Regression coverage for a real, confirmed false alarm: raw
+# `git rev-list` ahead/behind counts are pure ancestry facts, but this
+# fork's own squash-merge sync workflow deliberately severs ancestry
+# from upstream's individual commits even when their content has fully
+# landed. BEHIND reported ~1245 after a sync that had, by content,
+# already reconciled everything upstream had. These tests mirror the
+# real script's CONTENT_DELETED_COUNT gate (git diff --name-status
+# upstream/main origin/main, counting 'D' lines) the same way the
+# divergence tests above mirror BEHIND/LAST_REPORTED_BEHIND.
+
+@test "divergence: BEHIND>0 with zero content-deleted files is NOT filed (ancestry-only false signal)" {
+  BEHIND=1245
+  CONTENT_DELETED_COUNT=0
+  if [ "$BEHIND" -gt 0 ] && [ "$CONTENT_DELETED_COUNT" -eq 0 ]; then
+    SHOULD_FILE="no"
+  elif [ "$BEHIND" -gt 0 ]; then
+    SHOULD_FILE="yes"
+  else
+    SHOULD_FILE="no"
+  fi
+  [ "$SHOULD_FILE" = "no" ]
+}
+
+@test "divergence: BEHIND>0 with real content-deleted files IS filed (genuine reconciliation gap)" {
+  setup_divergence_state
+  BEHIND=150
+  CONTENT_DELETED_COUNT=3
+  LAST_REPORTED_BEHIND="$(cat "$DIVERGENCE_STATE_FILE" 2>/dev/null || echo 0)"
+  [[ "$LAST_REPORTED_BEHIND" =~ ^[0-9]+$ ]] || LAST_REPORTED_BEHIND=0
+  if [ "$BEHIND" -gt 0 ] && [ "$CONTENT_DELETED_COUNT" -eq 0 ]; then
+    SHOULD_FILE="no"
+  elif [ "$BEHIND" -gt 0 ] && [ "$BEHIND" -gt "$LAST_REPORTED_BEHIND" ]; then
+    SHOULD_FILE="yes"
+  else
+    SHOULD_FILE="no"
+  fi
+  [ "$SHOULD_FILE" = "yes" ]
+}
+
+@test "divergence: content-equivalent state with a tracked open issue triggers auto-close" {
+  setup_divergence_state
+  echo "150 999" > "$DIVERGENCE_STATE_FILE"
+  BEHIND=150
+  CONTENT_DELETED_COUNT=0
+  read -r LAST_REPORTED_BEHIND LAST_ISSUE_NUMBER < "$DIVERGENCE_STATE_FILE"
+  [ "$LAST_ISSUE_NUMBER" = "999" ]
+  if [ "$BEHIND" -gt 0 ] && [ "$CONTENT_DELETED_COUNT" -eq 0 ]; then
+    SHOULD_CLOSE="yes"
+  else
+    SHOULD_CLOSE="no"
+  fi
+  [ "$SHOULD_CLOSE" = "yes" ]
+}
+
 # ── Divergence issue dedupe + auto-close (added 2026-08-17, acp-ops-monitor#33) ──
 #
 # Regression coverage for a real gap: the growing-divergence branch above
