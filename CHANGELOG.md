@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-09-30)
+
+- **Hourly host-integrity and memory-pressure check** (`lib/host-integrity.sh`, wired into `validate-and-report.sh` as section 5b; issue #41, prevention for INC-2026-09-29). Packaged binaries/libraries changed in the last 65 minutes must still match their package (`dpkg -V`; a normal apt upgrade verifies clean and stays silent), recent executables in `/usr/bin` and `/usr/sbin` that no package owns are flagged, a full `dpkg -V` runs at 04:00, and sustained memory stall (`/proc/pressure/memory` some avg60 >= 20%) raises an alert before the host freezes. Known-good exceptions go in `~/.config/acp-ops-monitor/integrity-allowlist.txt`. Motivated by a test helper that overwrote `/usr/bin/{mkdir,ssh,curl,mountpoint}` on the hypervisor unnoticed, then froze the host and took the game server offline for about 2h16m. 17 new bats tests; run the suite in a read-only sandbox (`unshare --mount` with `/usr` and `/etc` bind-mounted read-only), never as an unguarded root shell.
+
 ### Fixed (2026-08-21)
 
 - **`check_ci()` used `gh run list --branch main --limit 1`, which picks whichever *workflow* happens to be chronologically newest, not necessarily the one containing the real security jobs.** Confirmed directly on `dune-awakening-selfhost-docker`: the same push triggers CI/CodeQL/Semgrep/etc, and `--limit 1` returned a CodeQL run (no security jobs at all) while the CI workflow's own `security-checks` job, run moments earlier on the same commit, was invisible to this check. Rewritten to use the commit's aggregated check-runs (`GET /repos/{repo}/commits/{ref}/check-runs`) instead, which covers every workflow's jobs for one exact commit in a single call.

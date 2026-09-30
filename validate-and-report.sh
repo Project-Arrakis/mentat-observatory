@@ -24,6 +24,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/sync-direction.sh"
 # shellcheck source=lib/ci-health.sh
 source "$SCRIPT_DIR/lib/ci-health.sh"
+# shellcheck source=lib/host-integrity.sh
+source "$SCRIPT_DIR/lib/host-integrity.sh"
 
 NOTIFY="${HOME}/.local/bin/notify-discord.sh"
 # BUG FIX (2026-08-15): this repo moved AGAIN, from the original WSL box
@@ -620,6 +622,41 @@ if [ -n "$FAILED_UNITS" ]; then
   done <<< "$FAILED_UNITS"
 else
   echo -e "  ${GREEN}OK:${NC} no failed systemd units"
+fi
+
+# ─── 5b. Host integrity and memory pressure ───
+# Added 2026-09-30 (INC-2026-09-29, issue #41): a test helper run as root
+# overwrote /usr/bin/{mkdir,ssh,curl,mountpoint} on the hypervisor and nothing
+# noticed; host memory pressure began 12 minutes later, and the host froze 4
+# minutes after that, taking the game server offline for ~2h16m. Hourly:
+# packaged binaries changed in the last 65 minutes must still match their
+# package (a normal apt upgrade verifies clean and stays silent); at 04:00 a
+# full `dpkg -V`. Also warn on sustained memory stall (PSI) before it freezes
+# the host. Known-good exceptions go in $HOST_INTEGRITY_ALLOWLIST.
+echo "--- 5b. Host integrity and memory pressure ---"
+HOST_INTEGRITY_ALLOWLIST="${HOST_INTEGRITY_ALLOWLIST:-${HOME}/.config/acp-ops-monitor/integrity-allowlist.txt}"
+export HOST_INTEGRITY_ALLOWLIST
+INTEGRITY_OUT="$(host_integrity_recent 65)"
+if [ "$(date +%H)" = "04" ]; then
+  INTEGRITY_OUT="${INTEGRITY_OUT}$(host_integrity_full)"
+fi
+if [ -n "$INTEGRITY_OUT" ]; then
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    echo -e "  ${RED}FAIL:${NC} $line"
+    REPORT="${REPORT}\n🚨 host integrity: **$line** no longer matches its package (or has no package) — run \`dpkg -V\` and compare; reinstall with \`apt-get install --reinstall <package>\`"
+    ISSUES=$((ISSUES + 1))
+  done <<< "$INTEGRITY_OUT"
+else
+  echo -e "  ${GREEN}OK:${NC} system binaries match their packages"
+fi
+PSI_THRESHOLD="${HOST_MEMORY_PRESSURE_THRESHOLD:-20}"
+if host_memory_pressure_high "$PSI_THRESHOLD"; then
+  echo -e "  ${RED}FAIL:${NC} host memory pressure (avg60 $(host_memory_pressure_avg60)%) >= ${PSI_THRESHOLD}%"
+  REPORT="${REPORT}\n🚨 host memory pressure is high (some avg60 $(host_memory_pressure_avg60)% ≥ ${PSI_THRESHOLD}%) — something is exhausting memory; check \`systemd-cgtop -m\` before the host freezes"
+  ISSUES=$((ISSUES + 1))
+else
+  echo -e "  ${GREEN}OK:${NC} host memory pressure normal"
 fi
 
 # ─── 6. Home directory structure ───
