@@ -1,0 +1,5 @@
+# Accepted silent scanner skips (see lib/ci-health.sh). One entry per line, `|`-separated:
+#   repo|job name|tracking url|YYYY-MM-DD expiry
+# An entry is only honoured until its expiry date; after that the hourly report warns again on its own.
+# Add an entry only when the skip is real, is not ours to fix directly, and has a tracking link.
+Red-Blink/dune-awakening-selfhost-docker|security-checks|https://github.com/Red-Blink/dune-awakening-selfhost-docker/pull/255|2026-12-07
