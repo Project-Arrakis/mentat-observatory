@@ -1,5 +1,7 @@
 # Secrets
 *.txt
+# Versioned data file (accepted silent scanner skips): the one .txt that is tracked.
+!known-silent-skips.txt
 !README.md
 
 # Webhook URLs
