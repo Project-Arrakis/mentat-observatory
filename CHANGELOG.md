@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (2026-10-07)
+
+- **Discord notifications now come from the Mentat (Sahir Venn) instead of a separate "ACP Dev Bot".** The hourly job is named **Projection** (a Mentat's forward computation of what is likely to go wrong: fork drift, CI health, stale PRs). `notify-discord.sh` now sends the webhook sender name `Sahir Venn`, the Mentat bot icon (the 256 px icon hosted in the public `mentat` repo), and a footer of `Projection · the Mentat's hourly computation` for the hourly events or `Mentat · development pipeline` for the manual `branch-created`/`pr-created` events. Per-host overrides: `NOTIFY_SENDER_NAME`, `NOTIFY_AVATAR_URL`, `NOTIFY_FOOTER_TEXT`; they reach Python through the environment and are never interpolated into code (covered by a test that tries quotes and shell syntax). Operator-visible change only: no new secret, schedule, path or dependency. The repository slug, the cron schedule and the `~/.config/acp-ops-monitor/` config directory are unchanged. Docs reviewed: this file and the README, where the claim that the deployed `notify-discord.sh` is a symlink was wrong (it is an installed copy, deployed by `install.sh`) and is corrected.
+
 ### Fixed (2026-08-21)
 
 - **`check_ci()` used `gh run list --branch main --limit 1`, which picks whichever *workflow* happens to be chronologically newest, not necessarily the one containing the real security jobs.** Confirmed directly on `dune-awakening-selfhost-docker`: the same push triggers CI/CodeQL/Semgrep/etc, and `--limit 1` returned a CodeQL run (no security jobs at all) while the CI workflow's own `security-checks` job, run moments earlier on the same commit, was invisible to this check. Rewritten to use the commit's aggregated check-runs (`GET /repos/{repo}/commits/{ref}/check-runs`) instead, which covers every workflow's jobs for one exact commit in a single call.

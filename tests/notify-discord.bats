@@ -101,3 +101,63 @@ assert d['embeds'][0]['title'] == 'My Title', d
 assert d['embeds'][0]['description'] == 'My Description', d
 "
 }
+
+# --- Voice: the Mentat (Sahir Venn) speaks for the hourly "Projection" job -----------------------------
+
+payload_field() {
+  python3 -c "
+import json,sys
+p=json.load(open(sys.argv[1]))
+path=sys.argv[2].split('.')
+v=p
+for k in path:
+    v=v[0] if k=='0' else v[k]
+print(v)" "${CAPTURED_PAYLOAD_FILE}" "$1"
+}
+
+@test "messages come from the Mentat, not the old ACP bot" {
+  run bash "$SCRIPT" deploy "Title" "Desc" "" 5763719
+  [ "$status" -eq 0 ]
+  [ "$(payload_field username)" = "Sahir Venn" ]
+  ! grep -qi "ACP" "${CAPTURED_PAYLOAD_FILE}"
+}
+
+@test "the default avatar is the Mentat bot icon hosted in the public mentat repo" {
+  run bash "$SCRIPT" deploy "Title" "Desc"
+  [ "$status" -eq 0 ]
+  [ "$(payload_field avatar_url)" = "https://raw.githubusercontent.com/Project-Arrakis/mentat/main/assets/bot-icon-256.png" ]
+}
+
+@test "hourly events carry the Projection footer" {
+  for event in deploy upstream-pr-created upstream-pr-merged pr-merged; do
+    run bash "$SCRIPT" "$event" "Title" "Desc"
+    [ "$status" -eq 0 ]
+    [ "$(payload_field embeds.0.footer.text)" = "Projection · the Mentat's hourly computation" ]
+  done
+}
+
+@test "manual pipeline events carry the development-pipeline footer, not the hourly one" {
+  for event in branch-created pr-created; do
+    run bash "$SCRIPT" "$event" "Title" "Desc"
+    [ "$status" -eq 0 ]
+    [ "$(payload_field embeds.0.footer.text)" = "Mentat · development pipeline" ]
+  done
+}
+
+@test "sender, avatar and footer can be overridden per host" {
+  NOTIFY_SENDER_NAME="Thufir" NOTIFY_AVATAR_URL="https://example.test/a.png" NOTIFY_FOOTER_TEXT="custom footer" \
+    run bash "$SCRIPT" deploy "Title" "Desc"
+  [ "$status" -eq 0 ]
+  [ "$(payload_field username)" = "Thufir" ]
+  [ "$(payload_field avatar_url)" = "https://example.test/a.png" ]
+  [ "$(payload_field embeds.0.footer.text)" = "custom footer" ]
+}
+
+@test "an override containing quotes and shell syntax is passed through as data and never executed" {
+  marker="$(mktemp -u)"
+  NOTIFY_SENDER_NAME="O'Brien \"x\" \$(touch ${marker}) \`touch ${marker}\`" \
+    run bash "$SCRIPT" deploy "Title" "Desc"
+  [ "$status" -eq 0 ]
+  [ ! -e "$marker" ]
+  [[ "$(payload_field username)" == *'$(touch'* ]]
+}

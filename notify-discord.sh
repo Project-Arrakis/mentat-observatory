@@ -70,18 +70,33 @@ DESC=$(printf '%b' "$DESC")
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Voice: these notifications are the Mentat's, not a separate "ACP" bot's. The sender, its avatar and the
+# footer are overridable per host (NOTIFY_SENDER_NAME / NOTIFY_AVATAR_URL / NOTIFY_FOOTER_TEXT) and are
+# handed to Python through the environment, never interpolated into the program text.
+# The hourly job itself is called Projection (a Mentat's forward computation); the manual pipeline events
+# (branch/PR created) are not part of that hourly run, so they carry a different footer.
+export NOTIFY_SENDER_NAME="${NOTIFY_SENDER_NAME:-Sahir Venn}"
+export NOTIFY_AVATAR_URL="${NOTIFY_AVATAR_URL:-https://raw.githubusercontent.com/Project-Arrakis/mentat/main/assets/bot-icon-256.png}"
+if [ -z "${NOTIFY_FOOTER_TEXT:-}" ]; then
+  case "$EVENT" in
+    branch-created|pr-created) NOTIFY_FOOTER_TEXT="Mentat · development pipeline" ;;
+    *)                         NOTIFY_FOOTER_TEXT="Projection · the Mentat's hourly computation" ;;
+  esac
+fi
+export NOTIFY_FOOTER_TEXT
+
 PAYLOAD=$(python3 -c "
-import json, sys
+import json, os, sys
 payload = {
-    'username': 'ACP Dev Bot',
-    'avatar_url': 'https://cdn.discordapp.com/attachments/1521604431622311966/1521604431995474111/0f77d5a4-7f75-4e33-993c-ffd61cd7712f.png',
+    'username': os.environ['NOTIFY_SENDER_NAME'],
+    'avatar_url': os.environ['NOTIFY_AVATAR_URL'],
     'embeds': [{
         'title': sys.argv[1],
         'description': sys.argv[2],
         'url': sys.argv[3] if sys.argv[3] else None,
         'color': int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else 0,
         'timestamp': '$TIMESTAMP',
-        'footer': {'text': 'ACP Development Pipeline'}
+        'footer': {'text': os.environ['NOTIFY_FOOTER_TEXT']}
     }]
 }
 print(json.dumps(payload))
