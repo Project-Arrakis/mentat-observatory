@@ -22,6 +22,7 @@ CI validation, and Discord notifications.
 |--------|---------|
 | `check-upstream-prs.sh` | Track PRs across repos, notify on merges; also tracks real upstream release tags on `Red-Blink/*` repos and notifies once when a new tag first appears (added 2026-07-25, closing a real gap where an upstream release went undetected by this monitor and was only found manually during unrelated work) |
 | `validate-and-report.sh` | Fork sync, rebase, mergeability, CI validation, and failed-systemd-unit detection (added 2026-07-25, closing a real gap where `dune-awakening-db-backup.service` had been silently failing daily since at least 2026-07-23 and was only found via manual `systemctl --failed` audit) |
+| `known-silent-skips.txt` | Accepted, tracked silent scanner skips in repos we do not own, one `repo\|job\|tracking url\|YYYY-MM-DD` per line. A listed, unexpired skip is reported as `OK` with its link instead of `WARN`; an expired or unlisted one warns (see `lib/ci-health.sh`). |
 | `notify-discord.sh` | Post events to Discord webhook. Messages appear as the Mentat (Sahir Venn) and the hourly job is called **Projection**; sender, avatar and footer are overridable with `NOTIFY_SENDER_NAME`, `NOTIFY_AVATAR_URL` and `NOTIFY_FOOTER_TEXT`. `~/.local/bin/notify-discord.sh` (what `validate-and-report.sh`'s `$NOTIFY` actually invokes) is an installed **copy**, not a symlink (corrected 2026-10-07; this line used to say symlink): edit here, then re-run `install.sh` to deploy it, and never edit the deployed path directly. |
 
 ## State Caches
