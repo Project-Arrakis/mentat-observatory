@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (2026-10-13)
+
+- **Monitor now watches the renamed repos and drops the dead structure-lint check.** The CI and PR checks still pointed at the pre-rename slugs (`sentinel`, `sentinel-web`, `sentinel-ops-monitor`; GitHub redirects kept them resolving); they now use `mentat`, `mentat-link` and `mentat-observatory`, with report labels `Mentat` / `Mentat-Link`. Section 6 (`~/tools/structure-lint`) is removed: the tool does not exist on this host and the check logged a SKIP on every run (the clone-hygiene audit in `meta`'s `tools/session-hygiene/` replaces it). Operator-visible in the hourly report only. Docs reviewed: this file; README has no references to either.
+
 ### Added (2026-10-07)
 
 - **Accepted silent skips (`known-silent-skips.txt`).** A security job that fails *open* in a repo we do not own (an upstream project) is a real finding but not one this monitor can fix, and a plain `WARN` kept the hourly report in "issues found" indefinitely. `lib/ci-health.sh` now consults `known-silent-skips.txt` (`repo|job|tracking url|YYYY-MM-DD`): a skip that is listed and unexpired is reported as `OK` with its tracking link and is not counted as an issue; an unlisted skip still warns, and an entry stops applying the day after its expiry so the warning comes back on its own. The first entry is Red-Blink's `security-checks` job, which prints `SKIP: gitleaks is not installed.` (draft fix upstream: Red-Blink/dune-awakening-selfhost-docker#255), accepted until 2026-12-07. Operator-visible only in the hourly report; no new secret, schedule or dependency. Docs reviewed: this file and the README.

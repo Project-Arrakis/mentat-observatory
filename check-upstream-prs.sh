@@ -149,8 +149,8 @@ check_repo "Red-Blink/dune-awakening-selfhost-docker" "Core"
 check_repo "Red-Blink/dune-docker-addons" "Catalog"
 echo
 check_repo "Project-Arrakis/dune-ops-observability-addon" "Addon"
-check_repo "Project-Arrakis/sentinel" "Sentinel"
-check_repo "Project-Arrakis/sentinel-web" "Sentinel-Web"
+check_repo "Project-Arrakis/mentat" "Mentat"
+check_repo "Project-Arrakis/mentat-link" "Mentat-Link"
 
 echo ""
 echo "--- Upstream Release Status ---"
@@ -166,8 +166,8 @@ echo "--- CI Status ---"
 check_ci_health "Red-Blink/dune-awakening-selfhost-docker" "Core" || true
 check_ci_health "Project-Arrakis/dune-ops-observability-addon" "Addon" || true
 check_ci_health "Project-Arrakis/dune-docker-addons" "Catalog" || true
-check_ci_health "Project-Arrakis/sentinel" "Sentinel" || true
-check_ci_health "Project-Arrakis/sentinel-web" "Sentinel-Web" || true
+check_ci_health "Project-Arrakis/mentat" "Mentat" || true
+check_ci_health "Project-Arrakis/mentat-link" "Mentat-Link" || true
 
 # BUG FIX (2026-07-25): NEW_STATE is a bash associative array
 # (declare -A), not a scalar string -- `echo "$NEW_STATE"` under
