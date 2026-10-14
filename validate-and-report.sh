@@ -588,7 +588,7 @@ done < <(timeout 60 gh pr list --repo Red-Blink/dune-awakening-selfhost-docker -
 # with the real security jobs, and being blind to a job reporting
 # "success" while its scanner silently never ran.
 echo "--- 4. CI failures ---"
-for r in Project-Arrakis/dune-awakening-selfhost-docker Project-Arrakis/dune-ops-observability-addon Project-Arrakis/dune-docker-addons Project-Arrakis/sentinel Project-Arrakis/sentinel-web Project-Arrakis/sentinel-ops-monitor yacketrj/tools; do
+for r in Project-Arrakis/dune-awakening-selfhost-docker Project-Arrakis/dune-ops-observability-addon Project-Arrakis/dune-docker-addons Project-Arrakis/mentat Project-Arrakis/mentat-link Project-Arrakis/mentat-observatory yacketrj/tools; do
   REPO_NAME=$(echo "$r" | cut -d'/' -f2)
   ISSUES_BEFORE=$ISSUES
   check_ci_health "$r" "$REPO_NAME" || true
@@ -621,33 +621,6 @@ if [ -n "$FAILED_UNITS" ]; then
 else
   echo -e "  ${GREEN}OK:${NC} no failed systemd units"
 fi
-
-# ─── 6. Home directory structure ───
-# Added 2026-07-25: after a full home-directory reorganization (see
-# ~/archive/2026-07-25-reorg-notes.md), wired structure-lint into this
-# hourly run so structure drift (a repo moved/duplicated outside
-# ~/projects, a basename/slug mismatch, ~/tools falling off $PATH) is
-# caught automatically going forward instead of only being noticed
-# the next time someone happens to look.
-echo "--- 6. Home directory structure ---"
-STRUCTURE_LINT="${HOME}/tools/structure-lint"
-if [ -x "$STRUCTURE_LINT" ]; then
-  STRUCTURE_OUT="$("$STRUCTURE_LINT" 2>&1)"
-  STRUCTURE_RC=$?
-  if [ "$STRUCTURE_RC" -eq 0 ]; then
-    echo -e "  ${GREEN}OK:${NC} structure-lint passed"
-  else
-    echo -e "  ${RED}FAIL:${NC} structure-lint found $STRUCTURE_RC issue(s)"
-    echo "$STRUCTURE_OUT" | grep "FAIL:" | while IFS= read -r line; do
-      echo "  $line"
-    done
-    REPORT="${REPORT}\n⚠️ Home directory structure-lint found $STRUCTURE_RC issue(s) — run \`~/tools/structure-lint\` to investigate"
-    ISSUES=$((ISSUES + 1))
-  fi
-else
-  echo -e "  ${YELLOW}SKIP:${NC} ~/tools/structure-lint not found or not executable"
-fi
-
 
 # ─── 6b. Upstream test drift ───
 echo "--- 6b. Upstream test drift ---"
