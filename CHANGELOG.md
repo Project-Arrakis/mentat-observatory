@@ -14,9 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed (2026-10-21)
 
 - **Network calls in the hourly scripts are now bounded (#17, #56).** `lib/timeouts.sh` shadows bare `gh`/`curl` calls (60 s, `ACP_NET_TIMEOUT`) and `git fetch|push|pull|ls-remote|clone` (120 s, `ACP_GIT_TIMEOUT`) with `timeout -k 5` wrappers, and `notify-discord.sh` now sets `curl --connect-timeout 10 --max-time 30` itself (it runs as a separate process, so the wrapper cannot reach it; **re-run `install.sh` to update the deployed copy**). Calls already written as `timeout N gh ...` keep their own limits. A timed-out call returns 124 and is treated like any other failure by existing `|| true` callers. Does not detect a hung or killed run (#57). Docs reviewed: this file; README unaffected.
-
-### Fixed (2026-10-21)
-
 - **`validate-and-report.sh` silently aborted at step 6b whenever the upstream test-drift checker found drift (#50).** The checker's exit 1 tripped `set -e` inside the bare `DRIFT_OUT="$(...)"` assignment, so step 7 (summary, `issue-state.txt`, GitHub issue filing, Discord post) never ran: no alert was sent between 2026-10-16 12:03 PDT and this fix, including for the failed `r740-backup-*` units. The exit code is now captured with `|| DRIFT_RC=$?`; a bats test runs the real capture lines against a failing checker. Operator-visible: alerts resume. Docs reviewed: this file; README has no claim affected.
 
 ### Changed (2026-10-13)
