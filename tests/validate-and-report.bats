@@ -647,3 +647,42 @@ MOCKEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"reached rc=1 out=DIVERGED"* ]]
 }
+
+# ── Abort trap (#52): an abnormal exit must raise ONE alert, a clean run none ──
+
+abort_harness() {
+  # Run the REAL trap block from the script with a fake notifier.
+  block="$(sed -n '/^# --- abort trap begin/,/^# --- abort trap end/p' "$BATS_TEST_DIRNAME/../validate-and-report.sh")"
+  [ -n "$block" ]
+  printf '#!/usr/bin/env bash\necho "$@" >> "%s/notified"\n' "$TEST_DIR" > "$TEST_DIR/notify.sh"
+  chmod +x "$TEST_DIR/notify.sh"
+  cat > "$TEST_DIR/run.sh" <<EOF
+set -euo pipefail
+NOTIFY="$TEST_DIR/notify.sh"
+ACP_ABORT_STATE="$TEST_DIR/abort-state.txt"
+$block
+CURRENT_STEP="6b. test"
+$1
+COMPLETED=1
+EOF
+}
+
+@test "abort trap: a set -e abort alerts once with the step and exit code" {
+  abort_harness 'false'
+  run bash "$TEST_DIR/run.sh"
+  [ "$status" -eq 1 ]
+  grep -q "6b. test" "$TEST_DIR/notified"
+  grep -q "exit 1" "$TEST_DIR/notified"
+  # same abort again: no second alert
+  run bash "$TEST_DIR/run.sh"
+  [ "$(wc -l < "$TEST_DIR/notified")" -eq 1 ]
+}
+
+@test "abort trap: a complete run sends nothing and clears the abort state" {
+  abort_harness 'true'
+  echo "old:1" > "$TEST_DIR/abort-state.txt"
+  run bash "$TEST_DIR/run.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/notified" ]
+  [ ! -s "$TEST_DIR/abort-state.txt" ]
+}
