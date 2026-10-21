@@ -634,3 +634,16 @@ MOCKEOF
   [ "$(cat "$COUNTER_FILE")" -eq 3 ]
   rm -rf "${RESOLVE_BIN_DIR}" "$COUNTER_FILE"
 }
+
+# ── Step 6b must survive a non-zero drift checker under `set -e` (#50) ──
+
+@test "step 6b: a drift checker exiting 1 does not abort the script" {
+  # Extract the REAL capture lines from the script, not a copy of them.
+  snippet="$(sed -n '/^  DRIFT_RC=0$/,/DRIFT_RC=\$?$/p' "$BATS_TEST_DIRNAME/../validate-and-report.sh")"
+  [ -n "$snippet" ]
+  printf '#!/usr/bin/env bash\necho DIVERGED\nexit 1\n' > "$TEST_DIR/drift.sh"
+  chmod +x "$TEST_DIR/drift.sh"
+  run bash -c "set -euo pipefail; DRIFT_SCRIPT='$TEST_DIR/drift.sh'; $snippet; echo reached rc=\$DRIFT_RC out=\$DRIFT_OUT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reached rc=1 out=DIVERGED"* ]]
+}

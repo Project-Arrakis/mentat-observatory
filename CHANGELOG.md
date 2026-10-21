@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (2026-10-21)
+
+- **`validate-and-report.sh` silently aborted at step 6b whenever the upstream test-drift checker found drift (#50).** The checker's exit 1 tripped `set -e` inside the bare `DRIFT_OUT="$(...)"` assignment, so step 7 (summary, `issue-state.txt`, GitHub issue filing, Discord post) never ran: no alert was sent between 2026-10-16 12:03 PDT and this fix, including for the failed `r740-backup-*` units. The exit code is now captured with `|| DRIFT_RC=$?`; a bats test runs the real capture lines against a failing checker. Operator-visible: alerts resume. Docs reviewed: this file; README has no claim affected.
+
 ### Changed (2026-10-13)
 
 - **Monitor now watches the renamed repos and drops the dead structure-lint check.** The CI and PR checks still pointed at the pre-rename slugs (`sentinel`, `sentinel-web`, `sentinel-ops-monitor`; GitHub redirects kept them resolving); they now use `mentat`, `mentat-link` and `mentat-observatory`, with report labels `Mentat` / `Mentat-Link`. Section 6 (`~/tools/structure-lint`) is removed: the tool does not exist on this host and the check logged a SKIP on every run (the clone-hygiene audit in `meta`'s `tools/session-hygiene/` replaces it). Operator-visible in the hourly report only. Docs reviewed: this file; README has no references to either.

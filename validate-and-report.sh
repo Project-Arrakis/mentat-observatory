@@ -630,8 +630,12 @@ echo "--- 6b. Upstream test drift ---"
 # defined, not two that can silently drift apart again. See Arrakis-Project#24.
 DRIFT_SCRIPT="${CORE_DIR}/scripts/check-upstream-test-drift.sh"
 if [ -x "$DRIFT_SCRIPT" ]; then
-  DRIFT_OUT="$("$DRIFT_SCRIPT" 2>&1)"
-  DRIFT_RC=$?
+  # BUG FIX (2026-10-21, #50): under `set -e` a bare failing command
+  # substitution assignment aborted the whole script the first time the
+  # checker exited 1 (drift found), silently skipping step 7 (summary, issue
+  # filing, Discord). Capture the exit code so the DRIFT branch can run.
+  DRIFT_RC=0
+  DRIFT_OUT="$("$DRIFT_SCRIPT" 2>&1)" || DRIFT_RC=$?
   if [ "$DRIFT_RC" -eq 0 ]; then
     echo -e "  ${GREEN}OK:${NC} no upstream test drift"
   else
