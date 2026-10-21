@@ -14,6 +14,44 @@ set -euo pipefail
 # "sync_decision: command not found" the moment it reached the first
 # call site. Found while rebasing an unrelated path-fix commit onto
 # this change and running the script to verify.
+# --- abort trap begin (#52, #55) ---
+# Any exit before the end of the script (set -e, failed source, failed gh
+# auth, a failing command) used to leave only a truncated cron.log: no alert,
+# no issue, for days (#50). Installed BEFORE any sourcing so a broken lib is
+# also reported. The ERR trap records the failing line, so the dedupe key
+# (step:rc:line) distinguishes different failures inside one long step. The
+# alert is repeated every ACP_ABORT_REALERT_SECS (default 6 h) even for the
+# same key, because the notifier fails open and may not have delivered.
+set -E
+CURRENT_STEP="start"
+COMPLETED=0
+FAIL_LINE=0
+NOTIFY="${NOTIFY:-${HOME}/.local/bin/notify-discord.sh}"
+ABORT_STATE="${ACP_ABORT_STATE:-${HOME}/.cache/acp-ops-monitor/abort-state.txt}"
+trap 'FAIL_LINE=$LINENO' ERR
+on_exit() {
+  local rc=$?
+  mkdir -p "$(dirname "$ABORT_STATE")" 2>/dev/null || true
+  if [ "$COMPLETED" -eq 1 ]; then
+    : > "$ABORT_STATE" 2>/dev/null || true
+    return 0
+  fi
+  # State format: "<epoch>|<step>:<rc>:<line>" (step names contain spaces).
+  local sig="${CURRENT_STEP}:${rc}:${FAIL_LINE}" now last="" last_sig="" last_ts=0
+  now="$(date +%s)"
+  last="$(cat "$ABORT_STATE" 2>/dev/null || true)"
+  if [ -n "$last" ]; then last_ts="${last%%|*}"; last_sig="${last#*|}"; fi
+  echo "ABORTED at step '${CURRENT_STEP}' (exit ${rc}, line ${FAIL_LINE})" >&2
+  if { [ "$last_sig" != "$sig" ] || [ $((now - ${last_ts:-0})) -ge "${ACP_ABORT_REALERT_SECS:-21600}" ]; } && [ -x "${NOTIFY:-}" ]; then
+    bash "$NOTIFY" deploy "🛑 ACP Validation — aborted" \
+      "validate-and-report.sh stopped at step '${CURRENT_STEP}' with exit ${rc} (line ${FAIL_LINE}). The hourly checks are not completing; see ~/.cache/acp-ops-monitor/cron.log." \
+      "" 15158332 >/dev/null 2>&1 || true
+    echo "${now}|${sig}" > "$ABORT_STATE" 2>/dev/null || true
+  fi
+}
+trap on_exit EXIT
+# --- abort trap end ---
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/sync-direction.sh
 source "$SCRIPT_DIR/lib/sync-direction.sh"
@@ -40,36 +78,15 @@ ACTIVITY=0
 REPORT=""
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-# --- abort trap begin (#52) ---
-# Any exit before the end of the script (set -e, failed gh auth, a failing
-# command) used to leave only a truncated cron.log: no alert, no issue, for
-# days (#50). Record the step and exit code, and post ONE Discord alert per
-# distinct (step, rc); a complete run clears it.
-CURRENT_STEP="start"
-COMPLETED=0
-ABORT_STATE="${ACP_ABORT_STATE:-${HOME}/.cache/acp-ops-monitor/abort-state.txt}"
-on_exit() {
-  local rc=$?
-  mkdir -p "$(dirname "$ABORT_STATE")" 2>/dev/null || true
-  if [ "$COMPLETED" -eq 1 ]; then
-    : > "$ABORT_STATE" 2>/dev/null || true
-    return 0
-  fi
-  local sig="${CURRENT_STEP}:${rc}"
-  echo "ABORTED at step '${CURRENT_STEP}' (exit ${rc})" >&2
-  if [ "$(cat "$ABORT_STATE" 2>/dev/null || true)" != "$sig" ] && [ -x "${NOTIFY:-}" ]; then
-    bash "$NOTIFY" deploy "🛑 ACP Validation — aborted" \
-      "validate-and-report.sh stopped at step '${CURRENT_STEP}' with exit ${rc}. The hourly checks are not completing; see ~/.cache/acp-ops-monitor/cron.log." \
-      "" 15158332 >/dev/null 2>&1 || true
-  fi
-  echo "$sig" > "$ABORT_STATE" 2>/dev/null || true
-}
-trap on_exit EXIT
-# --- abort trap end ---
 
 # Pre-flight: verify GitHub authentication
 CURRENT_STEP="preflight"
-if ! gh auth status >/dev/null 2>&1; then
+AUTH_RC=0
+gh auth status >/dev/null 2>&1 || AUTH_RC=$?
+if [ "$AUTH_RC" -eq 124 ]; then
+  echo "FATAL: gh auth status timed out (network), not a credential failure." >&2
+  exit 124
+elif [ "$AUTH_RC" -ne 0 ]; then
   echo "FATAL: gh not authenticated. Set GH_TOKEN." >&2
   exit 1
 fi

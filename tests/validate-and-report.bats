@@ -686,3 +686,34 @@ EOF
   [ ! -e "$TEST_DIR/notified" ]
   [ ! -s "$TEST_DIR/abort-state.txt" ]
 }
+
+@test "abort trap: a different failing line in the same step and rc alerts again" {
+  abort_harness 'false'
+  run bash "$TEST_DIR/run.sh"
+  sed -i 's/^false$/true\nfalse/' "$TEST_DIR/run.sh"
+  run bash "$TEST_DIR/run.sh"
+  [ "$(wc -l < "$TEST_DIR/notified")" -eq 2 ]
+}
+
+@test "abort trap: same abort is re-alerted once the realert window has passed" {
+  abort_harness 'false'
+  run bash "$TEST_DIR/run.sh"
+  ACP_ABORT_REALERT_SECS=0 run bash "$TEST_DIR/run.sh"
+  [ "$(wc -l < "$TEST_DIR/notified")" -eq 2 ]
+}
+
+@test "abort trap: an undeliverable notifier does not record the abort as alerted" {
+  abort_harness 'false'
+  chmod -x "$TEST_DIR/notify.sh"
+  run bash "$TEST_DIR/run.sh"
+  [ ! -s "$TEST_DIR/abort-state.txt" ]
+}
+
+@test "script wiring: trap precedes the first source, COMPLETED=1 is the last statement" {
+  f="$BATS_TEST_DIRNAME/../validate-and-report.sh"
+  trap_line=$(grep -n '^trap on_exit EXIT' "$f" | head -1 | cut -d: -f1)
+  src_line=$(grep -n '^source ' "$f" | head -1 | cut -d: -f1)
+  [ "$trap_line" -lt "$src_line" ]
+  [ "$(grep -v '^[[:space:]]*$' "$f" | tail -1)" = "COMPLETED=1" ]
+  [ "$(grep -c '^COMPLETED=1' "$f")" -eq 1 ]
+}

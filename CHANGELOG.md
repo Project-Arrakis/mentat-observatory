@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (2026-10-21)
 
-- **`validate-and-report.sh` now alerts when it aborts (#52, covers #12).** An `EXIT` trap records the current step and exit code and posts one Discord alert per distinct (step, exit) pair; a complete run clears the state (`~/.cache/acp-ops-monitor/abort-state.txt`) and sends nothing. Before this, #50 left the validator dead for 5 days with only a truncated `cron.log`. Includes the pre-flight `gh auth` failure. Operator-visible: a new red "ACP Validation — aborted" Discord message on abnormal exit. Docs reviewed: this file; README unaffected.
+- **`validate-and-report.sh` now alerts when it aborts (#52, covers #12).** An `EXIT` trap records the current step and exit code and posts one Discord alert per distinct (step, exit) pair; a complete run clears the state (`~/.cache/acp-ops-monitor/abort-state.txt`) and sends nothing. Before this, #50 left the validator dead for 5 days with only a truncated `cron.log`. Includes the pre-flight `gh auth` failure (a timeout there is reported as a timeout, not as bad credentials). The trap is installed before any `source`, an `ERR` trap records the failing line so different failures inside one long step each alert, and the same abort is re-alerted every 6 h (`ACP_ABORT_REALERT_SECS`) because the notifier fails open. Not covered: a hung run or a SIGKILL (tracked in #57). Layer 3 review findings: #55. Operator-visible: a new red "ACP Validation — aborted" Discord message on abnormal exit. Docs reviewed: this file; README unaffected.
 
 ### Fixed (2026-10-21)
 
