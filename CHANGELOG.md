@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (2026-10-21)
 
+- **Every `gh`/`curl` call in the hourly scripts is now bounded to 60 s (#17).** `lib/timeouts.sh` shadows both with `timeout` wrappers (override with `ACP_NET_TIMEOUT`), so one hung network call can no longer stall the cron; a timed-out call returns 124 like any other failed call. Operator-visible only as fewer stuck runs. Docs reviewed: this file; README unaffected.
+
+### Fixed (2026-10-21)
+
 - **`validate-and-report.sh` silently aborted at step 6b whenever the upstream test-drift checker found drift (#50).** The checker's exit 1 tripped `set -e` inside the bare `DRIFT_OUT="$(...)"` assignment, so step 7 (summary, `issue-state.txt`, GitHub issue filing, Discord post) never ran: no alert was sent between 2026-10-16 12:03 PDT and this fix, including for the failed `r740-backup-*` units. The exit code is now captured with `|| DRIFT_RC=$?`; a bats test runs the real capture lines against a failing checker. Operator-visible: alerts resume. Docs reviewed: this file; README has no claim affected.
 
 ### Changed (2026-10-13)
