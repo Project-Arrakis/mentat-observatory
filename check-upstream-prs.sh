@@ -3,6 +3,8 @@
 # plus real upstream release tags on repos this fork tracks/syncs from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/ci-health.sh"
+# shellcheck source=lib/timeouts.sh
+source "$SCRIPT_DIR/lib/timeouts.sh"
 
 # Pre-flight: verify GitHub authentication
 if ! gh auth status >/dev/null 2>&1; then

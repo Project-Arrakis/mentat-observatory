@@ -57,6 +57,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/sync-direction.sh"
 # shellcheck source=lib/ci-health.sh
 source "$SCRIPT_DIR/lib/ci-health.sh"
+# shellcheck source=lib/timeouts.sh
+source "$SCRIPT_DIR/lib/timeouts.sh"
 
 NOTIFY="${HOME}/.local/bin/notify-discord.sh"
 # BUG FIX (2026-08-15): this repo moved AGAIN, from the original WSL box
