@@ -107,7 +107,7 @@ if [ -z "$PAYLOAD" ]; then
   exit 0
 fi
 
-curl -fsS -X POST "$WEBHOOK_URL" \
+curl -fsS --connect-timeout 10 --max-time 30 -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" >/dev/null 2>&1 || true
 
