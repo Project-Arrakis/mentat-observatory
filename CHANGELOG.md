@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (2026-10-21)
 
-- **Every `gh`/`curl` call in the hourly scripts is now bounded to 60 s (#17).** `lib/timeouts.sh` shadows both with `timeout` wrappers (override with `ACP_NET_TIMEOUT`), so one hung network call can no longer stall the cron; a timed-out call returns 124 like any other failed call. Operator-visible only as fewer stuck runs. Docs reviewed: this file; README unaffected.
+- **Network calls in the hourly scripts are now bounded (#17, #56).** `lib/timeouts.sh` shadows bare `gh`/`curl` calls (60 s, `ACP_NET_TIMEOUT`) and `git fetch|push|pull|ls-remote|clone` (120 s, `ACP_GIT_TIMEOUT`) with `timeout -k 5` wrappers, and `notify-discord.sh` now sets `curl --connect-timeout 10 --max-time 30` itself (it runs as a separate process, so the wrapper cannot reach it; **re-run `install.sh` to update the deployed copy**). Calls already written as `timeout N gh ...` keep their own limits. A timed-out call returns 124 and is treated like any other failure by existing `|| true` callers. Does not detect a hung or killed run (#57). Docs reviewed: this file; README unaffected.
 
 ### Fixed (2026-10-21)
 
