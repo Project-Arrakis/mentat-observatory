@@ -59,6 +59,8 @@ source "$SCRIPT_DIR/lib/sync-direction.sh"
 source "$SCRIPT_DIR/lib/ci-health.sh"
 # shellcheck source=lib/timeouts.sh
 source "$SCRIPT_DIR/lib/timeouts.sh"
+# shellcheck source=lib/all-clear.sh
+source "$SCRIPT_DIR/lib/all-clear.sh"
 
 NOTIFY="${HOME}/.local/bin/notify-discord.sh"
 # BUG FIX (2026-08-15): this repo moved AGAIN, from the original WSL box
@@ -147,6 +149,10 @@ cd "$CORE_DIR"
 
 git fetch upstream main --quiet 2>/dev/null || true
 git fetch origin --quiet 2>/dev/null || true
+
+# Commits the Core fork is genuinely behind upstream but has already
+# reported; used only to word the all-clear message (mentat-observatory#59).
+BEHIND_REAL=0
 
 UPSTREAM=$(git rev-parse upstream/main)
 
@@ -469,6 +475,7 @@ Action needed: review what upstream changed, merge \`upstream/main\` into this f
       ISSUES=$((ISSUES + 1))
     else
       echo -e "  ${GREEN}OK:${NC} core fork main is $AHEAD_OF_UPSTREAM ahead / $BEHIND behind upstream — already reported on #${LAST_ISSUE_NUMBER:-unknown}, no growth since last check"
+      BEHIND_REAL=$BEHIND
     fi
   else
     echo -e "  ${GREEN}OK:${NC} core fork main is ahead of upstream by design (local merges not yet upstreamed), not behind — not syncing"
@@ -770,9 +777,12 @@ elif [ "$ISSUES" -eq 0 ]; then
   else
     echo -e "${GREEN}All checks passed.${NC} $ACTIVITY new PR events. Sending status update."
     if [ -x "$NOTIFY" ]; then
-      bash "$NOTIFY" deploy \
-        "✅ ACP Validation — All Clear" \
-        "Core fork synced. All PRs MERGEABLE. CI clean. $ACTIVITY PR events detected." \
+      OPEN_OPS_ISSUES=$(timeout 30 gh issue list --repo Project-Arrakis/dune-awakening-selfhost-docker \
+        --label ops-monitor --state open --json number --jq length 2>/dev/null || echo "?")
+      CLEAR_MSG=$(all_clear_message "$BEHIND_REAL" "${OPEN_OPS_ISSUES:-?}" "$ACTIVITY")
+      CLEAR_TITLE=$(printf '%s\n' "$CLEAR_MSG" | sed -n 1p)
+      CLEAR_BODY=$(printf '%s\n' "$CLEAR_MSG" | sed -n '2,$p')
+      bash "$NOTIFY" deploy "$CLEAR_TITLE" "$CLEAR_BODY" \
         "" 5763719 >/dev/null 2>&1 || true
     fi
   fi
